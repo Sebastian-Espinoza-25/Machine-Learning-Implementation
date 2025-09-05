@@ -1,7 +1,10 @@
+#IMPORTS
 import numpy as np
 import pandas as pd
 from collections import Counter
+import sys
 
+#LOGIC
 #Class for ID3 Decision Tree. 
 class ID3DecisionTree:
     #Initialize the decision tree with hyperparameters.
@@ -93,26 +96,37 @@ class ID3DecisionTree:
         gain = base_entropy - ent
         return gain, split_map
 
+    # Find the feature that gives the best information gain
     def _best_split(self, X: pd.DataFrame, y: pd.Series):
+        # Initialize best split as "none" with negative infinity gain
         best_feature, best_info, best_gain = None, None, -np.inf
+        # Test each feature column for potential splits
         for col in X.columns:
+            # Compute information gain and the split masks for this feature
             gain, split_map = self._information_gain_categorical(X[col], y)
+            # Update the best split if this one is better
             if gain > best_gain:
                 best_gain = gain
                 best_feature = col
                 best_info = {"children": split_map}
+        # If no feature provides sufficient gain, return None
         if best_gain < self.min_gain or best_feature is None:
             return None, None, 0.0
         return best_feature, best_info, best_gain
 
+    # Recursively build the decision tree
     def _build_tree(self, X: pd.DataFrame, y: pd.Series, depth: int):
+        # If all labels are the same, create a leaf node
         if len(y.unique()) == 1:
             return {"type": "leaf", "class": y.iloc[0]}
+        # Check stopping criteria: max depth, min samples, or no features left
         if (self.max_depth is not None and depth >= self.max_depth) or \
            (len(y) < self.min_samples_split) or \
            (X.shape[1] == 0):
             return {"type": "leaf", "class": self._majority_class(y)}
+        # Find the best feature to split on
         best_feature, split_info, gain = self._best_split(X, y)
+        # If no valid split found, create a leaf node
         if best_feature is None:
             return {"type": "leaf", "class": self._majority_class(y)}
         node = {
@@ -123,31 +137,43 @@ class ID3DecisionTree:
             "majority_class": self._majority_class(y)
         }
         node["children"] = {}
+        # Recursively build child nodes for each split
         for val, mask in split_info["children"].items():
             X_child = X[mask].drop(columns=[best_feature])
             y_child = y[mask]
             node["children"][val] = self._build_tree(X_child, y_child, depth + 1)
         return node
-
+ 
+    # Predict the class for a single data point by traversing the tree
     def _predict_row(self, row: pd.Series, node):
+        # Traverse the tree until a leaf node is reached
         while node["type"] != "leaf":
+            # Get the feature used at this decision node
             feat = node["feature"]
+            # If the feature is missing in this row, return the majority class as fallback
             if feat not in row.index:
                 return node.get("majority_class", None)
             val = row[feat]
             key = val if pd.notna(val) else "__MISSING__"
             child = node["children"].get(key)
+            # If there's no child for this feature value, return the majority class as fallback
             if child is None:
                 return node.get("majority_class", None)
             node = child
         return node["class"]
 
+     # Get the majority class from a set of labels (used for fallback or leaf creation)
     @staticmethod
     def _majority_class(y: pd.Series):
+        # Count how many times each class appears
         counts = y.value_counts()
+         # Find the maximum frequency
         m = counts.max()
+        # Return the class with the highest frequency alphabetically in case of ties
         return sorted(counts[counts == m].index.tolist())[0]
 
+    #PRETTY PRINT
+    # Function to print the tree structure in a readable format
     def _print_node(self, node, indent=""):
         if node["type"] == "leaf":
             print(f"{indent}Leaf: predict = {node['class']}")
@@ -158,9 +184,11 @@ class ID3DecisionTree:
             print(f"{indent}  [{feat} == {val!r}]")
             self._print_node(node["children"][val], indent + "    ")
     
+    # Function to pretty-print the tree structure
     def pretty_print(self):
         self._pretty_print_node(self.tree_)
-        
+
+    # function for pretty-printing nodes of the tree    
     def _pretty_print_node(self, node, indent="", is_last=True):
         prefix = indent + ("└── " if is_last else "├── ")
         if node["type"] == "leaf":
@@ -180,12 +208,16 @@ class ID3DecisionTree:
                 self._pretty_print_node(child, new_indent + ("    " if is_last_child else "│   "), is_last_child)
 
 
+#HELPER
+# Function to split data into training and testing sets
 def train_test_split(X, y, test_size=0.3, random_state=0, shuffle=True):
+    # Convert y to a pandas Series and reset index
     y = pd.Series(y).reset_index(drop=True)
     X = X.reset_index(drop=True)
     rng = np.random.RandomState(random_state)
     train_idx, test_idx = [], []
 
+    # ensure each class is represented proportionally in train and test sets
     for cls, idxs in y.groupby(y).groups.items():
         idxs = np.fromiter(idxs, dtype=int)
         if shuffle:
@@ -193,7 +225,7 @@ def train_test_split(X, y, test_size=0.3, random_state=0, shuffle=True):
         n = len(idxs)
 
         if n == 1:
-            # keep singleton class in train to avoid zero-shot class in training
+            # if there's only one sample of this class, put it in the training set
             train_idx.extend(idxs)
             continue
 
@@ -212,6 +244,7 @@ def train_test_split(X, y, test_size=0.3, random_state=0, shuffle=True):
         y.iloc[test_idx].reset_index(drop=True),
     )
 
+# Function to compute the confusion matrix as a pandas DataFrame
 def confusion_matrix_df(y_true, y_pred):
     labels = sorted(pd.unique(pd.concat([pd.Series(y_true), pd.Series(y_pred)])))
     idx = {lab:i for i, lab in enumerate(labels)}
@@ -220,11 +253,13 @@ def confusion_matrix_df(y_true, y_pred):
         mat[idx[yt], idx[yp]] += 1
     return pd.DataFrame(mat, index=[f"true_{l}" for l in labels], columns=[f"pred_{l}" for l in labels])
 
+# Function to compute accuracy
 def accuracy(y_true, y_pred):
     y_true = np.asarray(y_true)
     y_pred = np.asarray(y_pred)
     return float((y_true == y_pred).mean())
 
+# Function to compute precision, recall, and F1-score for each class
 def per_class_prf(y_true, y_pred):
     cm = confusion_matrix_df(y_true, y_pred).values
     k = cm.shape[0]
@@ -240,35 +275,48 @@ def per_class_prf(y_true, y_pred):
     return out  
 
 
-data = pd.read_csv("tennis.csv", dtype=str)
+#SETUP FOR TRAINING AND EVALUATION 
+if __name__ == "__main__":
+    # Require a CSV path as the first argument
+    if len(sys.argv) < 2:
+        print("Usage: python id3DecisionTree.py <dataset.csv>")
+        sys.exit(1)
 
-X = data.iloc[:, :-1]
-y = data.iloc[:, -1]
+    csv_path = sys.argv[1]
+    # Load dataset (assume last column is the target)
+    data = pd.read_csv(csv_path, dtype=str)
+    X = data.iloc[:, :-1]
+    y = data.iloc[:, -1]
 
-# Split into train and test
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.3, random_state=42, shuffle=True
-)
+    # Split into train and test
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=42, shuffle=True
+    )
 
-print("Train size:", len(X_train), " Test size:", len(X_test))
-print("Train class counts:\n", y_train.value_counts())
-print("Test class counts:\n", y_test.value_counts())
+    print(f"Dataset: {csv_path}")
+    print("Train size:", len(X_train), " Test size:", len(X_test))
+    print("Train class counts:\n", y_train.value_counts())
+    print("Test class counts:\n", y_test.value_counts())
 
-# Fit on train, evaluate on train and test
-tree = ID3DecisionTree(max_depth=None, min_samples_split=2, min_gain=1e-9, random_state=0)
-tree.fit(X_train, y_train)
+    # Fit on train, evaluate on train and test
+    tree = ID3DecisionTree(max_depth=None, min_samples_split=2, min_gain=1e-9, random_state=0)
+    tree.fit(X_train, y_train)
 
-print("\nPretty tree (train):")
-tree.pretty_print()
+    print("\nPretty tree (train):")
+    tree.pretty_print()
 
-y_train_pred = tree.predict(X_train)
-y_test_pred  = tree.predict(X_test)
+    y_train_pred = tree.predict(X_train)
+    y_test_pred  = tree.predict(X_test)
 
-print("\nAccuracy")
-print("  Train:", accuracy(y_train, y_train_pred))
-print("  Test :", accuracy(y_test,  y_test_pred))
+    print("\nAccuracy")
+    print("  Train:", accuracy(y_train, y_train_pred))
+    print("  Test :", accuracy(y_test,  y_test_pred))
 
-print("\nConfusion Matrix (Test)")
-cm_test = confusion_matrix_df(y_test, y_test_pred)
-print(cm_test)
+    print("\nConfusion Matrix (Test)")
+    cm_test = confusion_matrix_df(y_test, y_test_pred)
+    print(cm_test)
 
+    print("\nPer-class Precision, Recall, F1 (Test)")
+    prf_test = per_class_prf(y_test, y_test_pred)
+    for i, (prec, rec, f1) in enumerate(prf_test):
+        print(f"  Class {tree.classes_[i]!r}: Precision={prec:.3f}  Recall={rec:.3f}  F1={f1:.3f}")
