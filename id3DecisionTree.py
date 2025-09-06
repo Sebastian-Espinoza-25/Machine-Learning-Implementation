@@ -315,7 +315,6 @@ if __name__ == "__main__":
     print(f"  Test  -> {test_out}   (rows: {len(test_df)})")
 
     print(f"\nDataset: {csv_path}")
-    print("Train size:", len(X_train), " Test size:", len(X_test))
     print("Train class counts:\n", y_train.value_counts())
     print("Test class counts:\n", y_test.value_counts())
 
