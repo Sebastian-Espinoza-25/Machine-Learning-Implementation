@@ -212,7 +212,7 @@ class ID3DecisionTree:
 
 #HELPER
 # Function to split data into training and testing sets
-def train_test_split(X, y, test_size=0.2, random_state=0, shuffle=True):
+def train_test_split(X, y, test_size=0.2, random_state=42, shuffle=True):
     # Convert y to a pandas Series and reset index
     y = pd.Series(y).reset_index(drop=True)
     X = X.reset_index(drop=True)
@@ -291,7 +291,7 @@ if __name__ == "__main__":
 
     # Split into train and test
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42, shuffle=True
+        X, y, test_size=0.2, random_state=42, shuffle=True
     )
 
     # Save train/test splits to CSV files
@@ -320,7 +320,7 @@ if __name__ == "__main__":
     print("Test class counts:\n", y_test.value_counts())
 
     # Fit on train, evaluate on train and test
-    tree = ID3DecisionTree(max_depth=None, min_samples_split=2, min_gain=1e-9, random_state=0)
+    tree = ID3DecisionTree(max_depth=4, min_samples_split=2, min_gain=1e-9, random_state=42)
     tree.fit(X_train, y_train)
 
     print("\nPretty tree (train):")
@@ -338,6 +338,9 @@ if __name__ == "__main__":
     print(cm_test)
 
     print("\nPer-class Precision, Recall, F1 (Test)")
+    print(f"{'Class':<10}{'Precision':<12}{'Recall':<12}{'F1-score':<12}")
+    print("-" * 46)
     prf_test = per_class_prf(y_test, y_test_pred)
     for i, (prec, rec, f1) in enumerate(prf_test):
-        print(f"  Class {tree.classes_[i]!r}: Precision={prec:.3f}  Recall={rec:.3f}  F1={f1:.3f}")
+        print(f"{tree.classes_[i]:<10}{prec:<12.3f}{rec:<12.3f}{f1:<12.3f}")
+
