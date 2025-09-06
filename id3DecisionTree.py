@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from collections import Counter
 import sys
+import os
 
 #LOGIC
 #Class for ID3 Decision Tree. 
@@ -39,7 +40,9 @@ class ID3DecisionTree:
             mask = X[col].notna()
             # Convert to string and strip whitespace
             X.loc[mask, col] = X.loc[mask, col].astype(str).str.strip()
+        # Store the classes present in the dataset
         self.classes_ = np.array(sorted(y.unique()))
+        # Mark all features as categorical
         self.feature_types_ = {col: "categorical" for col in X.columns}
         #Build the decision tree recursively
         self.tree_ = self._build_tree(X, y, depth=0)
@@ -207,10 +210,9 @@ class ID3DecisionTree:
                 print(val_prefix + f"{feature} = {val}")
                 self._pretty_print_node(child, new_indent + ("    " if is_last_child else "│   "), is_last_child)
 
-
 #HELPER
 # Function to split data into training and testing sets
-def train_test_split(X, y, test_size=0.3, random_state=0, shuffle=True):
+def train_test_split(X, y, test_size=0.2, random_state=0, shuffle=True):
     # Convert y to a pandas Series and reset index
     y = pd.Series(y).reset_index(drop=True)
     X = X.reset_index(drop=True)
@@ -274,7 +276,6 @@ def per_class_prf(y_true, y_pred):
         out.append((prec, rec, f1))
     return out  
 
-
 #SETUP FOR TRAINING AND EVALUATION 
 if __name__ == "__main__":
     # Require a CSV path as the first argument
@@ -293,7 +294,27 @@ if __name__ == "__main__":
         X, y, test_size=0.3, random_state=42, shuffle=True
     )
 
-    print(f"Dataset: {csv_path}")
+    # Save train/test splits to CSV files
+    target_name = y.name if y.name is not None else data.columns[-1]
+    base_stem = os.path.splitext(os.path.basename(csv_path))[0]
+
+    train_out = f"{base_stem}_train.csv"
+    test_out  = f"{base_stem}_test.csv"
+
+    train_df = X_train.copy()
+    train_df[target_name] = y_train.values
+
+    test_df = X_test.copy()
+    test_df[target_name] = y_test.values
+
+    train_df.to_csv(train_out, index=False)
+    test_df.to_csv(test_out, index=False)
+
+    print(f"\nSaved splits:")
+    print(f"  Train -> {train_out}  (rows: {len(train_df)})")
+    print(f"  Test  -> {test_out}   (rows: {len(test_df)})")
+
+    print(f"\nDataset: {csv_path}")
     print("Train size:", len(X_train), " Test size:", len(X_test))
     print("Train class counts:\n", y_train.value_counts())
     print("Test class counts:\n", y_test.value_counts())
